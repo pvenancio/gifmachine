@@ -10,7 +10,7 @@ The following dependencies must be installed beforehand:
 * [AWS CLI version 2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-mac.html);
 * [Python3](https://realpython.com/installing-python/) and its following packages (installed via [pip3](https://vgkits.org/blog/pip3-macos-howto/)):
   - [Boto3](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html#installation) (AWS Python SDK);
-  - [requests](https://requests.readthedocs.io/en/master/)
+  - [requests](https://requests.readthedocs.io/en/master/).
 
 For the time being, an AWS user with AdministratorAccess IAM policy attach is needed and configured on the local machine (via ``aws configure``) to run these scripts. On subsequent versions of gifmachine-one-aws a more fine-grained IAM policy list will be detailed. 
 
