@@ -19,7 +19,7 @@ DOCKER_BUILD_ROLE_SECRET_ACCESS_KEY=$(echo $DOCKER_BUILD_ROLE_KEYS | awk '{print
 DOCKER_BUILD_ROLE_SESSION_TOKEN=$(echo $DOCKER_BUILD_ROLE_KEYS | awk '{print $3}')
 
 echo "Building gifmachine image..."
-docker build -t gifmachine -f docker/Dockerfile \
+sudo docker build -t gifmachine -f docker/Dockerfile \
 	--build-arg AWS_DEFAULT_REGION=$AWS_REGION \
 	--build-arg AWS_ACCESS_KEY_ID=$DOCKER_BUILD_ROLE_ACCESS_KEY \
 	--build-arg AWS_SECRET_ACCESS_KEY=$DOCKER_BUILD_ROLE_SECRET_ACCESS_KEY \
@@ -31,7 +31,7 @@ echo 'Getting repository URI...'
 ECR_REPOSITORY_URI=`aws ecr describe-repositories --region $AWS_REGION --repository-names $ENVIRONMENT-$COMPANY-gifmachine --query 'repositories[0].repositoryUri' --output text`
 echo 'Logging into AWS ECR...'
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+aws ecr get-login-password --region $AWS_REGION | sudo docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 echo "Tagging and pushing docker image to AWS ECR \"$ENVIRONMENT-$COMPANY-gifmachine\" repository..."
-docker tag gifmachine $ECR_REPOSITORY_URI:gifmachine
-docker push $ECR_REPOSITORY_URI:gifmachine
+sudo docker tag gifmachine $ECR_REPOSITORY_URI:gifmachine
+sudo docker push $ECR_REPOSITORY_URI:gifmachine
