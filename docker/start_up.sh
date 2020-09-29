@@ -1,3 +1,5 @@
+#!/bin/bash
+
 aws s3 cp s3://$ENVIRONMENT-$COMPANY-gifmachine-deploy-configs/gifmachine-config.txt .
 eval $(cat gifmachine-config.txt | sed 's/^/export /')
 rm gifmachine-config.txt

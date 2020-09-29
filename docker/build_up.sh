@@ -1,3 +1,5 @@
+#!/bin/bash
+
 apt-get update && apt-get install -y awscli openssh-server vim
 
 aws s3 cp s3://$ENVIRONMENT-$COMPANY-gifmachine-deploy-configs/gifmachine-config.txt .
