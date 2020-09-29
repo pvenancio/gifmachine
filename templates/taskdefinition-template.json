@@ -1,0 +1,50 @@
+{
+  "family": "",
+  "executionRoleArn": "",
+  "taskRoleArn": "",
+  "cpu": "256",
+  "memory": "512",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "containerDefinitions": [
+    {
+      "portMappings": [
+        {"hostPort": 4567, "protocol": "tcp", "containerPort": 4567},
+        {"hostPort": 22, "protocol": "tcp", "containerPort": 22}
+      ],
+      "cpu": 224,
+      "memory": 512,
+      "image": "",
+      "essential": true,
+      "name": "gifmachine",
+      "environment": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "",
+          "awslogs-region": "",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    },{
+      "portMappings": [
+        {"hostPort": 8080, "protocol": "tcp", "containerPort": 8080}
+      ],
+      "cpu": 32,
+      "memory": 64,
+      "image": "",
+      "essential": false,
+      "name": "csidecar",
+      "environment": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "",
+          "awslogs-region": "",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+
+  ]
+}

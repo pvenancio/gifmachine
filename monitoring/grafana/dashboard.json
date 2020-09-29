@@ -1,0 +1,223 @@
+{
+  "dashboard":{
+    "id": null,
+    "panels": [
+      {
+        "datasource": "Prometheus",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "interval": "1m",
+        "lines": true,
+        "linewidth": 1,
+        "pluginVersion": "7.2.0",
+        "renderer": "flot",
+        "spaceLength": 10,
+        "targets": [
+          {
+            "expr": "cSidecar_CPUUtilization",
+            "interval": "",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "title": "CPU Utilization",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "type": "graph",
+        "yaxes": [
+          {
+            "decimals": null,
+            "format": "percent",
+            "label": null,
+            "logBase": 1,
+            "max": null,
+            "min": "0",
+            "show": true
+          },
+          {
+            "format": "short",
+            "label": null,
+            "logBase": 1,
+            "max": null,
+            "min": null,
+            "show": true
+          }
+        ],
+        "yaxis": {
+          "align": false,
+          "alignLevel": null
+        }
+      },{
+        "datasource": "Prometheus",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        },
+        "interval": "1m",
+        "lines": true,
+        "linewidth": 1,
+        "pluginVersion": "7.2.0",
+        "renderer": "flot",
+        "spaceLength": 10,
+        "targets": [
+          {
+            "expr": "cSidecar_MemoryUtilization",
+            "interval": "",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "title": "Memory Utilization",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "type": "graph",
+        "yaxes": [
+          {
+            "decimals": null,
+            "format": "percent",
+            "label": null,
+            "logBase": 1,
+            "max": null,
+            "min": "0",
+            "show": true
+          },
+          {
+            "format": "short",
+            "label": null,
+            "logBase": 1,
+            "max": null,
+            "min": null,
+            "show": true
+          }
+        ],
+        "yaxis": {
+          "align": false,
+          "alignLevel": null
+        }
+      },{
+        "datasource": "Prometheus",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 0,
+          "y": 6
+        },
+        "interval": "1m",
+        "lines": true,
+        "linewidth": 1,
+        "pluginVersion": "7.2.0",
+        "renderer": "flot",
+        "spaceLength": 10,
+        "targets": [
+          {
+            "expr": "increase(cSidecar_RxTraffic[1m])",
+            "interval": "",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "title": "Rx Traffic",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "type": "graph",
+        "yaxes": [
+          {
+            "decimals": null,
+            "format": "decbytes",
+            "label": null,
+            "logBase": 1,
+            "max": null,
+            "min": "0",
+            "show": true
+          },
+          {
+            "format": "short",
+            "label": null,
+            "logBase": 1,
+            "max": null,
+            "min": null,
+            "show": true
+          }
+        ],
+        "yaxis": {
+          "align": false,
+          "alignLevel": null
+        }
+      },{
+        "datasource": "Prometheus",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 12,
+          "y": 6
+        },
+        "interval": "1m",
+        "lines": true,
+        "linewidth": 1,
+        "pluginVersion": "7.2.0",
+        "renderer": "flot",
+        "spaceLength": 10,
+        "targets": [
+          {
+            "expr": "increase(cSidecar_TxTraffic[1m])",
+            "interval": "",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "title": "Tx Traffic",
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "type": "graph",
+        "yaxes": [
+          {
+            "decimals": null,
+            "format": "decbytes",
+            "label": null,
+            "logBase": 1,
+            "max": null,
+            "min": "0",
+            "show": true
+          },
+          {
+            "format": "short",
+            "label": null,
+            "logBase": 1,
+            "max": null,
+            "min": null,
+            "show": true
+          }
+        ],
+        "yaxis": {
+          "align": false,
+          "alignLevel": null
+        }
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "title": "gifmachine",
+    "uid": null,
+    "version": 1
+  }
+}

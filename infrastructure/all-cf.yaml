@@ -1,0 +1,366 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  Environment:
+    Description: Environment description
+    Type: String
+  Company:
+    Description: Company description
+    Type: String
+
+Mappings:
+  Main:
+    Service:
+      Value: 'all'
+  VPCConfig:
+    Range:
+      CIDR: '10.0.0.0/16'
+  SubnetConfig:
+    JumpboxSubnet:
+      CIDR: '10.0.0.0/24'
+    NatInstanceSubnetA:
+      CIDR: '10.0.1.0/24'
+  JumpboxConfig:
+    InstanceType:
+      Value: 't3a.micro'
+  NATConfig:
+    InstanceType:
+      Value: 't3a.nano'
+  AWSRegionAMI:
+    us-east-1: 
+      Value: 'ami-0c94855ba95c71c99'
+    eu-west-1:
+      Value: 'ami-08a2aed6e0a6f9c7d'
+  AWSRegionNatInstanceAMI:
+    us-east-1: 
+      Value: 'ami-0f690b2f134c61108'
+    eu-west-1:
+      Value: 'ami-0771766bf53706ff2'
+
+Resources:
+  ##############################################################################
+  #### NETWORKING
+  ## VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap ['VPCConfig', 'Range', 'CIDR']
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value:  !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'vpc' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  ## Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value:  !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'igw' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  ## Subnets
+  JumpboxSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap ['SubnetConfig', 'JumpboxSubnet', 'CIDR']
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value:  !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','public','jumpbox' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  NatInstanceSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap ['SubnetConfig', 'NatInstanceSubnetA', 'CIDR']
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value:  !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','public','natinstance','a' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  ## Route Tables
+  JumpboxRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value:  !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'rt','public','jumpbox' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  JumpboxRouteInternet:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref JumpboxRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  JumpboxRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref JumpboxRouteTable
+      SubnetId: !Ref JumpboxSubnet
+  NatInstanceRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value:  !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'rt','public','natinstance' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  NatInstanceRouteInternet:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatInstanceRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  NatInstanceRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref NatInstanceRouteTable
+      SubnetId: !Ref NatInstanceSubnetA
+  ##############################################################################
+  #### EC2
+  ## Security Groups
+  JumpboxSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'jumpbox','sg']]
+      GroupDescription: Security Group for Jumpbox
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'jumpbox','sg']]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  NatInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'natinstance','sg']]
+      GroupDescription: Security Group for Nat Instance
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: !FindInMap ['VPCConfig', 'Range', 'CIDR']
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'natinstance','sg']]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  ## IAM Roles
+  JumpboxRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'jumpbox','role']]
+      AssumeRolePolicyDocument: 
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: JumpboxRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'ec2:DescribeInstances'
+                - 'ec2:CreateTags'
+                - 'ecr:*'
+                - 'secretsmanager:GetSecretValue'
+                - 's3:GetObject'
+                - 'sts:AssumeRole'
+                - 'iam:GetRole'
+              Resource: '*'
+  JumpboxInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      InstanceProfileName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'jumpbox','iprofile']]
+      Path: '/'
+      Roles: 
+        - !Ref JumpboxRole
+  NatInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'natinstance','role']]
+      AssumeRolePolicyDocument: 
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: NatInstanceRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'ec2:DescribeInstances'
+                - 'ec2:CreateTags'
+              Resource: '*'
+  NatInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      InstanceProfileName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'natinstance','iprofile']]
+      Path: '/'
+      Roles: 
+        - !Ref NatInstanceRole
+  # Instances
+  JumpboxInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - AWSRegionAMI
+        - Ref: AWS::Region
+        - Value
+      InstanceType: !FindInMap ['JumpboxConfig', 'InstanceType', 'Value']
+      SubnetId: !Ref JumpboxSubnet
+      SecurityGroupIds: [!Ref 'JumpboxSecurityGroup']
+      KeyName: !Join ['-', [!Ref Environment,!Ref Company,'jumpbox','key' ]]
+      EbsOptimized: False
+      IamInstanceProfile: !Ref JumpboxInstanceProfile
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'jumpbox' ]]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+      UserData: # Initial script to: automatically add tags to root volume, install needed packages
+        Fn::Base64: 
+          !Sub
+            - |
+              #!/bin/sh
+              AWS_AVAIL_ZONE=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)
+              AWS_REGION="`echo \"$AWS_AVAIL_ZONE\" | sed 's/[a-z]$//'`"
+              AWS_INSTANCE_ID=$(curl http://169.254.169.254/latest/meta-data/instance-id)
+              ROOT_VOLUME_IDS=$(aws ec2 describe-instances --region $AWS_REGION --instance-id $AWS_INSTANCE_ID --output text --query Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId)
+              aws ec2 create-tags --resources $ROOT_VOLUME_IDS --region $AWS_REGION --tags Key=Name,Value=${Environment}-${Company}-all-jumpbox-volume Key=Environment,Value=${Environment} Key=Service,Value=${Service}
+              echo 'LC_ALL=en_US.utf-8' | sudo tee -a /etc/environment
+              echo 'LANG=en_US.utf-8' | sudo tee -a /etc/environment
+              sudo yum update -y
+              sudo yum install -y golang git
+              sudo amazon-linux-extras install -y postgresql11 docker
+              sudo service docker start
+            - { Company: !Ref Company, Environment: !Ref Environment, Service: !FindInMap ['Main', 'Service', 'Value'] }
+  NATInstanceA:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - AWSRegionNatInstanceAMI
+        - Ref: AWS::Region
+        - Value
+      InstanceType: !FindInMap ['NATConfig', 'InstanceType', 'Value']
+      KeyName: !Join ['-', [!Ref Environment,!Ref Company,'natinstance','key' ]]
+      SourceDestCheck: False
+      EbsOptimized: False
+      IamInstanceProfile: !Ref NatInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "True"
+          DeviceIndex: "0"
+          GroupSet: 
+            - !Ref NatInstanceSecurityGroup
+          SubnetId: !Ref NatInstanceSubnetA
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'natinstance' ]]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+      UserData: 
+        Fn::Base64: 
+          !Sub
+            - |
+              #!/bin/sh
+              AWS_AVAIL_ZONE=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)
+              AWS_REGION="`echo \"$AWS_AVAIL_ZONE\" | sed 's/[a-z]$//'`"
+              AWS_INSTANCE_ID=$(curl http://169.254.169.254/latest/meta-data/instance-id)
+              ROOT_VOLUME_IDS=$(aws ec2 describe-instances --region $AWS_REGION --instance-id $AWS_INSTANCE_ID --output text --query Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId)
+              aws ec2 create-tags --resources $ROOT_VOLUME_IDS --region $AWS_REGION --tags Key=Name,Value=${Environment}-${Company}-all-natinstance-volume Key=Environment,Value=${Environment} Key=Service,Value=${Service}
+            - { Company: !Ref Company, Environment: !Ref Environment, Service: !FindInMap ['Main', 'Service', 'Value'] }
+  ##############################################################################
+  #### IAM
+  ## Docker Build Role
+  DockerBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'docker','build','role']]
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: [!Ref AWS::AccountId]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: GetConfigsAndSecrets
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetSecretValue'
+                - 's3:GetObject'
+                - 'ec2:DescribeInstances'
+              Resource: 
+                - '*'
+
+Outputs:
+  VPCId:
+    Value: !Ref VPC
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'vpc' ]] 
+  VPCCIDR:
+    Value: !FindInMap ['VPCConfig', 'Range', 'CIDR']
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'vpc','CIDR' ]]
+  JumpboxSubnetCIDR:
+    Value: !FindInMap ['SubnetConfig', 'JumpboxSubnet', 'CIDR']
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','public','jumpbox','CIDR' ]]
+  InternetGatewayId:
+    Value: !Ref InternetGateway
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'igw','id']]
+  NATInstanceAId:
+    Value: !Ref NATInstanceA
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'natinstance','id']]

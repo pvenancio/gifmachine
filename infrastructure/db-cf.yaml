@@ -1,0 +1,194 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  Environment:
+    Description: Environment description
+    Type: String
+  Company:
+    Description: Company description
+    Type: String
+  DBUsername:
+    Description: DB username
+    Type: String
+  DBPassword:
+    Description: DB password
+    Type: String
+
+Mappings:
+  Main:
+    Service:
+      Value: 'db'
+  SubnetConfig:
+    PrivateSubnetA:
+      CIDR: '10.0.25.0/24'
+  DBInstanceConfig:
+    InstanceType:
+      Type: 't3a.nano'
+  AWSRegionAMI:
+    us-east-1: 
+      Value: 'ami-0c94855ba95c71c99'
+    eu-west-1:
+      Value: 'ami-08a2aed6e0a6f9c7d'
+
+Resources:
+  ##############################################################################
+  #### NETWORKING
+  ## Subnet
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      CidrBlock: !FindInMap ['SubnetConfig', 'PrivateSubnetA', 'CIDR']
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','private','a' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  ## Route Tables
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]] 
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'rt','private','a' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  PrivateRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','natinstance','id']]
+  PrivateRouteTableAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      SubnetId: !Ref PrivateSubnetA
+  ##############################################################################
+  #### EC2
+  ## Security Groups
+  DBInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'dbinstance','sg']]
+      GroupDescription: Security Group for Database
+      VpcId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp:
+            Fn::ImportValue: 
+              !Join ['-', [!Ref Environment,!Ref Company,'all','subnet','public','jumpbox','CIDR' ]]
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 
+            Fn::ImportValue: 
+              !Join ['-', [!Ref Environment,!Ref Company,'all','vpc','CIDR' ]]
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'dbinstance','sg']]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  ## IAM Role
+  DBInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'dbinstance','role']]
+      AssumeRolePolicyDocument: 
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: DBInstanceRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'ec2:DescribeInstances'
+                - 'ec2:CreateTags'
+              Resource: '*'
+  DBInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      InstanceProfileName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'dbinstance','iprofile']]
+      Path: '/'
+      Roles: 
+        - !Ref DBInstanceRole
+  ## DB Instance
+  DBInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - AWSRegionAMI
+        - Ref: AWS::Region
+        - Value
+      InstanceType: !FindInMap ['DBInstanceConfig', 'InstanceType', 'Type']
+      SubnetId: !Ref PrivateSubnetA
+      SecurityGroupIds: [!Ref 'DBInstanceSecurityGroup']
+      KeyName: !Join ['-', [!Ref Environment,!Ref Company,'dbinstance','key' ]]
+      EbsOptimized: False
+      IamInstanceProfile: !Ref DBInstanceProfile
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'dbinstance' ]]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+      UserData: # Initial script to: automatically add tags to root volume, install needed packages
+        Fn::Base64: 
+          !Sub
+            - |
+              #!/bin/sh
+              AWS_AVAIL_ZONE=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)
+              AWS_REGION="`echo \"$AWS_AVAIL_ZONE\" | sed 's/[a-z]$//'`"
+              AWS_INSTANCE_ID=$(curl http://169.254.169.254/latest/meta-data/instance-id)
+              ROOT_VOLUME_IDS=$(aws ec2 describe-instances --region $AWS_REGION --instance-id $AWS_INSTANCE_ID --output text --query Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId)
+              aws ec2 create-tags --resources $ROOT_VOLUME_IDS --region $AWS_REGION --tags Key=Name,Value=${Environment}-${Company}-all-dbinstance-volume Key=Environment,Value=${Environment} Key=Service,Value=${Service}
+              echo 'LC_ALL=en_US.utf-8' | sudo tee -a /etc/environment
+              echo 'LANG=en_US.utf-8' | sudo tee -a /etc/environment
+              echo "*****************************************"
+              echo " Installing PostgreSQL"
+              echo "*****************************************"
+              sudo amazon-linux-extras install -y postgresql11
+              sudo yum install -y postgresql-server
+              sudo service postgresql initdb
+              sudo echo "listen_addresses = '*'" | sudo tee -a /var/lib/pgsql/data/postgresql.conf
+              sudo echo "local all all      trust" | sudo tee /var/lib/pgsql/data/pg_hba.conf
+              sudo echo "host  all all 0.0.0.0/0 md5" | sudo tee -a /var/lib/pgsql/data/pg_hba.conf
+              sudo service postgresql start
+              psql -U postgres -c "CREATE DATABASE gifmachine"
+              psql -U postgres -c "CREATE USER ${DBUsername} WITH PASSWORD '${DBPassword}';GRANT ALL PRIVILEGES ON DATABASE gifmachine to ${DBUsername};"
+            - { Company: !Ref Company, Environment: !Ref Environment, Service: !FindInMap ['Main', 'Service', 'Value'], DBUsername: !Ref DBUsername, DBPassword: !Ref DBPassword}
+
+Outputs:
+  PrivateSubnetAId:
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','private','a' ]]
+  DBInstanceSecurityGroupId:
+    Value: !Ref DBInstanceSecurityGroup
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'dbinstance','sg']]

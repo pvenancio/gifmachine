@@ -1,0 +1,37 @@
+version: "3.8"
+services:
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus
+    command: --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/targets.json:/etc/prometheus/targets.json
+      - prometheus-storage:/prometheus
+    restart: unless-stopped
+  grafana:
+    container_name: grafana
+    image: grafana/grafana
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_SERVER_HTTP_PORT=3000
+    restart: unless-stopped
+  cdepot:
+    container_name: cdepot
+    image: cdepot
+    ports:
+      - 8002:8002
+    volumes:
+      - ./prometheus/targets.json:/targets.json
+    restart: unless-stopped
+
+volumes:
+  prometheus-storage:
+  grafana-storage:
