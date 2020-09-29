@@ -12,7 +12,7 @@ The following dependencies must be installed beforehand:
   - [Boto3](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html#installation) (AWS Python SDK);
   - [requests](https://requests.readthedocs.io/en/master/).
 
-For the time being, an AWS user with AdministratorAccess IAM policy attach is needed and configured on the local machine (via ``aws configure``) to run these scripts. On subsequent versions of gifmachine-one-aws a more fine-grained IAM policy list will be detailed. 
+For the time being, an AWS user with AdministratorAccess IAM policy attach is needed and configured on the local machine (via ``aws configure``) to run these scripts. On subsequent versions of gifmachine-on-aws a more fine-grained IAM policy list will be detailed. 
 
 Note: no delete/remove AWS CLI/SDK commands are present in these scripts so do not worry to accidentally delete anything when running gifmachine-on-aws.
 
@@ -30,7 +30,7 @@ ENVIRONMENT=prod
 COMPANY=dundermiff
 ```
 
-Note: due to the name length limitation of some AWS resources, the number o characters of ``ENVIRONMENT``+``COMPANY`` cannot be greater than 15.
+Note: due to the name length limitation of some AWS resources (namely EC2 Target Groups), the number o characters of ``ENVIRONMENT``+``COMPANY`` cannot be greater than 15.
 
 ## Usage
 ### Gifmachine
@@ -61,7 +61,7 @@ sh give_me_cicd.sh
 No interaction is needed and after a minute the pipeline url will appear. Note that when you create this stack, the pipeline will automatically start.
 
 ## Architecture
-The infrastructure solution for gifmachine-on-aws is composed of multiple AWS services:
+This infrastructure solution for gifmachine-on-aws is composed of multiple AWS services:
 * ECS Fargate to handle the containerized gifmachine application;
 * EC2 Network Load Balancer to receive external requests and distribute them among the running gifmachine containers;
 * EC2 Instances to act as a host for:
@@ -77,7 +77,7 @@ The infrastructure solution for gifmachine-on-aws is composed of multiple AWS se
 * VPC (and all its subnets, security groups, routing tables, etc);
 * AWS Cloudformation to deploy all of the above.
 
-A detailed design of the architecture can be seen below.
+A detailed design of the architecture can be seen below:
 
 ![architecture](/documentation/aws_architecture.png)
 
@@ -85,6 +85,7 @@ Architecture notes:
 * AWS Fargate was chosen over other solutions (non-AWS managed ones) due to it's high reliability and availability (since it's a managed service);
 * An EC2 Instance was used for hosting the PostgreSQL and the NAT gateway in this setup due to its quick launch time. For a 'real' production environment AWS RDS and AWS NAT Gateway managed services are recommended;
 * Currently AWS ECS Fargate dos not have an easy way to share its underlining infrastructure metrics (the way AWS suggests involves AWS Cloudwatch Logs plus AWS Athena and is not very Prometheus/Grafana user-friendly), thus the need for the sidecar setup;
+* Also, AWS ECS Fargate does not provide access to the inside of the container (like what EC2 instances do), so an OpenSSH server is started within it for ease of internal access (not the most recommended solution, [I know](https://jpetazzo.github.io/2014/06/23/docker-ssh-considered-evil/)); 
 * The AWS CodePipeline and its siblings was chosen over other CICD services due to its higher integration with the AWS ecosystem. 
 
 ## Details
@@ -107,15 +108,15 @@ The Gifmachine build procedure is divided into 4 phases:
 
 In Phase 1, it starts by asking the user to create PostgreSQL database credentials and Gifmachine API password and then stores them in AWS Secret Manager for later use.
 
-In Phase 2, SSH keys for connecting to the EC2 Instances (jumpbox and NAT Instance) are created and stored (locally in the /keys folder, an remotely in an also created S3 bucket).
+In Phase 2, SSH keys for connecting to the EC2 Instances (Jumpbox and NAT Instance) are created and stored (locally in the /keys folder, an remotely in an also created S3 bucket).
 
-Then the Cloudformation stack "```ENVIRONMENT```-```COMPANY```-all-cf", that encompasses the VPC, Subnets, Routing Tables, Gateways, EC2 Instances, etc., that will be used by all the remaining stacks starts to be built.
+Then the Cloudformation stack "```ENVIRONMENT```-```COMPANY```-all-cf", that encompasses the VPC, Subnets, Routing Tables, Gateways, EC2 Instances, etc., that will be used by all the remaining stacks is built.
 
-In Phase 3 the process is similar, since an SSH key for the database EC2 Instance is created and stored, and then a Cloudformation stack (named "```ENVIRONMENT```-```COMPANY```-db-cf") starts to be built as well. This one will include all database related resources, i.e., EC2 Instance, Private Subnet, Security Group, etc.). A boot script is included in the EC2 Instance that will install and setup PostgreSQL automatically on start-up.
+In Phase 3 the process is similar, since an SSH key for the database EC2 Instance is also created and stored, and then a Cloudformation stack (named "```ENVIRONMENT```-```COMPANY```-db-cf") starts to be built as well. This one will include all database related resources, i.e., EC2 Instance, Private Subnet, Security Group, etc.). A boot script is included in the EC2 Instance that will install and setup PostgreSQL automatically on start-up.
 
 Phase 4 is where Gifmachine infrastructure is built. SSH key that will enable direct connection to the containers are created and stored, an ECR repository and S3 bucket are created to store the built container images and deployment configuration files, respectively.
 
-Gifmachine configuration files are uploaded to the created S3 bucket, and the container image built is launched within the jumpbox via an SSH command. This image build process basically clones the gifmachine git repository, builds it, including in it the relevant environment variables, and uploads the result to ECR.
+Gifmachine configuration files are uploaded to the created S3 bucket, and the container image built is launched within the jumpbox via an SSH command. This image build process basically clones the gifmachine git repository, builds it, includes in it the relevant environment variables, and uploads the result to ECR.
 
 The same is done for the container sidecar application.
 
@@ -164,7 +165,7 @@ The documentation used to build gifmachine-on-aws was:
 * Grafana HTTP API Reference: [grafana.com/docs/grafana/latest/http_api](https://grafana.com/docs/grafana/latest/http_api/)
 
 ## Folder structure
-The folder structure of gifmachine-on-aws is defined as follows:
+The folder structure of gifmachine-on-aws repository is defined as follows:
 
 ```bash
 .
@@ -189,6 +190,7 @@ Although being functional, there is still room for improvement in gifmachine-on-
 * Create the procedure to delete all gifmachine-on-aws created resources (currently, due to Cloudformation limitations, some resources needed to be created via the AWS CLI, thus not beeing removed if the Cloudformation stack is deleted);
 * Improve monitoring with a ELK stack to ingest gifmachine logs (and analyse, e.g., endpoints usage, most seen gifs, etc.);
 * Create an AWS Lambda function to do an higher application validation within the Blue/Green CodeDeploy deployment;
+* Enable a more secure way to interact with and debug the running processes within the container;
 * Enable deployment on other AWS Regions.
 
 ## License
