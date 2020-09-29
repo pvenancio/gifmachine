@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  Environment:
+    Description: Environment description
+    Type: String
+  Company:
+    Description: Company description
+    Type: String
+
+Mappings:
+  Main:
+    Service:
+      Value: 'monitoring'
+  SubnetConfig:
+    PublicSubnetA:
+      CIDR: '10.0.30.0/24'
+  AWSRegionAMI:
+    us-east-1: 
+      Value: 'ami-0c94855ba95c71c99'
+    eu-west-1:
+      Value: 'ami-08a2aed6e0a6f9c7d'
+  MonitoringConfig:
+    InstanceType:
+      Value: 't3a.micro'
+
+Resources:
+  ##############################################################################
+  #### NETWORKING
+  ## Subnets
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      CidrBlock: !FindInMap ['SubnetConfig', 'PublicSubnetA', 'CIDR']
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','public','a' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  ## Route Tables 
+  PublicRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'rt','public','a' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  PublicRouteInternetA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','igw','id' ]]
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTableA
+  ##############################################################################
+  #### EC2
+  ## Security Groups
+  MonitoringSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'instance','sg']]
+      GroupDescription: Security Group for Monitoring
+      VpcId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: '0.0.0.0/0'
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: '0.0.0.0/0'
+        - IpProtocol: tcp
+          FromPort: 8002
+          ToPort: 8002
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'instance','sg']]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  GifMachineSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties: 
+      GroupId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'gifmachine','ecs','service','sg']]
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      CidrIp: !FindInMap ['SubnetConfig', 'PublicSubnetA', 'CIDR']
+      
+  ## IAM Roles
+  MonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'instance','role']]
+      AssumeRolePolicyDocument: 
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: MonitoringRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'ec2:DescribeInstances'
+                - 'ec2:CreateTags'
+                - 'ecr:*'
+                - 's3:GetObject'
+                - 'sts:AssumeRole'
+                - 'iam:GetRole'
+              Resource: '*'
+  MonitoringInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      InstanceProfileName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'instance','iprofile']]
+      Path: '/'
+      Roles: 
+        - !Ref MonitoringRole
+  ## Instances
+  MonitoringInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - AWSRegionAMI
+        - Ref: AWS::Region
+        - Value
+      InstanceType: !FindInMap ['MonitoringConfig', 'InstanceType', 'Value']
+      SubnetId: !Ref PublicSubnetA
+      SecurityGroupIds: [!Ref 'MonitoringSecurityGroup']
+      KeyName: !Join ['-', [!Ref Environment,!Ref Company,'monitoring','key' ]]
+      EbsOptimized: False
+      IamInstanceProfile: !Ref MonitoringInstanceProfile
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'instance' ]]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+      UserData: # Initial script to: automatically add tags to root volume, install needed packages
+        Fn::Base64: 
+          !Sub
+            - |
+              #!/bin/sh
+              AWS_AVAIL_ZONE=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)
+              AWS_REGION="`echo \"$AWS_AVAIL_ZONE\" | sed 's/[a-z]$//'`"
+              AWS_INSTANCE_ID=$(curl http://169.254.169.254/latest/meta-data/instance-id)
+              ROOT_VOLUME_IDS=$(aws ec2 describe-instances --region $AWS_REGION --instance-id $AWS_INSTANCE_ID --output text --query Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId)
+              aws ec2 create-tags --resources $ROOT_VOLUME_IDS --region $AWS_REGION --tags Key=Name,Value=${Environment}-${Company}-all-monitoring-volume Key=Environment,Value=${Environment} Key=Service,Value=${Service}
+              echo 'LC_ALL=en_US.utf-8' | sudo tee -a /etc/environment
+              echo 'LANG=en_US.utf-8' | sudo tee -a /etc/environment
+            - { Company: !Ref Company, Environment: !Ref Environment, Service: !FindInMap ['Main', 'Service', 'Value'] }

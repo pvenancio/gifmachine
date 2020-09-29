@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  Environment:
+    Description: Environment description
+    Type: String
+  Company:
+    Description: Company description
+    Type: String
+
+Mappings:
+  Main:
+    Service:
+      Value: 'gifmachine'
+ 
+Resources:
+  #############################################################################
+  ### Code Build
+  ## Build Role
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'codebuild','role']]
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [codebuild.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: CodeBuildRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:*'
+                  - 's3:*'
+                  - 'secretsmanager:*'
+                  - 'ecr:*'
+                  - "ecs:*"
+                  - "ec2:*"
+                  - "codebuild:*"
+                  - "iam:PassRole"
+                  - "iam:GetRole"
+                  - "sts:AssumeRole"
+                Resource: '*'  
+  ## Build Project              
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'codebuild']]
+      Source:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: ENVIRONMENT
+            Type: PLAINTEXT
+            Value: !Ref Environment
+          - Name: COMPANY
+            Type: PLAINTEXT
+            Value: !Ref Company
+          - Name: AWS_REGION
+            Type: PLAINTEXT
+            Value: !Ref "AWS::Region"
+      ServiceRole: !Ref CodeBuildRole
+      TimeoutInMinutes: 20
+      VpcConfig:
+        SecurityGroupIds: 
+          - Fn::ImportValue: 
+              !Join ['-', [!Ref Environment,!Ref Company,'db','dbinstance','sg']]
+        Subnets: 
+          - Fn::ImportValue: 
+              !Join ['-', [!Ref Environment,!Ref Company,'db','subnet','private','a' ]]
+        VpcId:
+          Fn::ImportValue: 
+            !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  ##############################################################################
+  #### Code Deploy
+  ## Deploy Role
+  CodeDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'codedeploy','role']]
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [codedeploy.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: CodeDeployRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                  - 's3:GetObjectVersion'
+                  - 's3:GetBucketAcl'
+                  - 's3:GetBucketLocation'
+                  - 'secretsmanager:*'
+                  - 'ecr:*'
+                  - 'ecs:*'
+                  - 'elasticloadbalancing:*'
+                  - 'iam:PassRole'
+                  - 'lambda:*'
+                Resource: '*'
+  ## Deploy Application
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'codedeploy']]
+      ComputePlatform: ECS 
+  ##############################################################################
+  #### Code Pipeline
+  ## Pipeline Role
+  CodePipelineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'codepipeline','role']]
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [codepipeline.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: CodePipelineRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'codebuild:BatchGetBuilds'
+                  - 'codebuild:StartBuild'
+                  - 's3:*'
+                  - 'codedeploy:GetApplication'
+                  - 'codedeploy:CreateDeployment'
+                  - 'codedeploy:GetApplicationRevision'
+                  - 'codedeploy:GetDeployment'
+                  - 'codedeploy:GetDeploymentConfig'
+                  - 'codedeploy:RegisterApplicationRevision'
+                  - 'ecs:*'
+                  - 'ecr:*'
+                  - 'iam:PassRole'
+                  - 'iam:GetRole'
+                  - 'sts:AssumeRole'
+                  - 'lambda:*'
+                Resource: '*'

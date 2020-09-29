@@ -1,0 +1,525 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  Environment:
+    Description: Environment description
+    Type: String
+  Company:
+    Description: Company description
+    Type: String
+  ContainerImage:
+    Description: Container image for task definition
+    Type: String
+  cSidecarImage:
+    Description: cSidecar image for task definition
+    Type: String
+
+Mappings:
+  Main:
+    Service:
+      Value: 'gifmachine'
+  SubnetConfig:
+    PublicSubnetA:
+      CIDR: '10.0.10.0/24'
+    PublicSubnetB:
+      CIDR: '10.0.11.0/24'
+    PrivateSubnetA:
+      CIDR: '10.0.15.0/24'
+    PrivateSubnetB:
+      CIDR: '10.0.16.0/24'
+  LoadBalancerConfig:
+    Listener:
+      Port: '80'
+    ListenerTest:
+      Port: '8080'
+    TargetGroupDefinition:
+      HealthCheckPath: '/'
+      HealthCheckIntervalSeconds: '30'
+      HealthyThresholdCount: '2'
+      UnhealthyThresholdCount: '2'
+      DeregistrationDelay: 300
+  ECSConfig:
+    ContainerDefinition:
+      PortMappings: '4567'
+      ContainerCpu: 224
+      ContainerMemory: 512
+      ContainerName: 'gifmachine'
+    cSidecarDefinition:
+      PortMappings: '8080'
+      cSidecarCpu: 32
+      cSidecarMemory: 64
+      cSidecarName: 'cSidecar'
+    ServiceDefinition:
+      NumberOfTasks: '1'
+      HealthCheckGracePeriodSeconds: '60'
+    TaskDefinition: 
+      Cpu: 256
+      Memory: 512
+
+Resources:
+  ##############################################################################
+  #### NETWORKING
+  ## Subnets
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      CidrBlock: !FindInMap ['SubnetConfig', 'PublicSubnetA', 'CIDR']
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','public','a' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      CidrBlock: !FindInMap ['SubnetConfig', 'PublicSubnetB', 'CIDR']
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','public','b' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      CidrBlock: !FindInMap ['SubnetConfig', 'PrivateSubnetA', 'CIDR']
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','private','a' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      CidrBlock: !FindInMap ['SubnetConfig', 'PrivateSubnetB', 'CIDR']
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','private','b' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  ## Route Tables 
+  PublicRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'rt','public','a' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  PublicRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'rt','public','b' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  PublicRouteInternetA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','igw','id' ]]
+  PublicRouteInternetB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','igw','id' ]]
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTableA
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTableB
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'rt','private','a' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'rt','private','b' ]]
+      - Key: Environment
+        Value: !Ref Environment
+      - Key: Service
+        Value: !FindInMap ['Main', 'Service', 'Value']
+  PrivateRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','natinstance','id' ]]
+  PrivateRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: 
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','natinstance','id' ]]
+  PrivateRouteTableAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      SubnetId: !Ref PrivateSubnetA
+  PrivateRouteTableBAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      SubnetId: !Ref PrivateSubnetB
+  ##############################################################################
+  #### Load Balancer
+  ## LB Security Group
+  LBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'lb','sg']]
+      GroupDescription: Security Group for Application Load Balancer
+      VpcId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'lb','sg']]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  ## Load Balancer
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: network
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'lb']]
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  ## Target Groups
+  TargetGroupBlue:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: LoadBalancer
+    Properties:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'tg','b']]
+      VpcId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      Port: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+      Protocol: TCP
+      TargetType: ip
+      HealthCheckIntervalSeconds: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'HealthCheckIntervalSeconds']
+      HealthCheckPath: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'HealthCheckPath']
+      HealthCheckProtocol: HTTP
+      HealthyThresholdCount: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'HealthyThresholdCount']
+      UnhealthyThresholdCount: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'UnhealthyThresholdCount']
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'DeregistrationDelay']
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  TargetGroupGreen:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: LoadBalancer
+    Properties:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'tg','g']]
+      VpcId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      Port: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+      Protocol: TCP
+      TargetType: ip
+      HealthCheckIntervalSeconds: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'HealthCheckIntervalSeconds']
+      HealthCheckPath: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'HealthCheckPath']
+      HealthCheckProtocol: HTTP 
+      HealthyThresholdCount: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'HealthyThresholdCount']
+      UnhealthyThresholdCount: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'UnhealthyThresholdCount']
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: !FindInMap ['LoadBalancerConfig', 'TargetGroupDefinition', 'DeregistrationDelay']
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  ## Listeners
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: !FindInMap ['LoadBalancerConfig', 'Listener', 'Port']
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroupBlue
+  LoadBalancerListenerTest:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: !FindInMap ['LoadBalancerConfig', 'ListenerTest', 'Port']
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroupBlue
+              
+  ##############################################################################
+  #### ECS
+  ## Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'ecs','cluster']]
+      ClusterSettings:
+        - Name: containerInsights
+          Value: disabled
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  ## ECS Task/Execution Role
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'ecs','taskexecution','role']]
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: ECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'ecr:GetAuthorizationToken'
+                - 'ecr:BatchCheckLayerAvailability'
+                - 'ecr:GetDownloadUrlForLayer'
+                - 'ecr:BatchGetImage'
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+                - 'iam:CreateServiceLinkedRole'
+                - 'iam:PutRolePolicy'
+                - 'secretsmanager:GetSecretValue'
+                - 's3:GetObject'
+                - 'ec2:DescribeInstances'
+              Resource: '*'
+  ## ECS Service Security Group
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'ecs','service','sg']]
+      GroupDescription: Access from the Application Load Balancer and Jumpbox
+      VpcId:
+        Fn::ImportValue: 
+          !Join ['-', [!Ref Environment,!Ref Company,'all','vpc' ]]
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          CidrIp: !FindInMap ['SubnetConfig', 'PublicSubnetA', 'CIDR']
+          FromPort: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+          ToPort: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+        - IpProtocol: tcp
+          CidrIp: !FindInMap ['SubnetConfig', 'PublicSubnetB', 'CIDR']
+          FromPort: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+          ToPort: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+        - IpProtocol: tcp
+          CidrIp:
+            Fn::ImportValue: 
+              !Join ['-', [!Ref Environment,!Ref Company,'all','subnet','public','jumpbox','CIDR' ]]
+          FromPort: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+          ToPort: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+        - IpProtocol: tcp
+          CidrIp:
+            Fn::ImportValue: 
+              !Join ['-', [!Ref Environment,!Ref Company,'all','subnet','public','jumpbox','CIDR' ]]
+          FromPort: 22
+          ToPort: 22
+      Tags:
+        - Key: Name
+          Value: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'ecs','service','sg']]
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  ## Taks Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'taskdefinition' ]]
+      Cpu: !FindInMap ['ECSConfig', 'TaskDefinition', 'Cpu']
+      Memory: !FindInMap ['ECSConfig', 'TaskDefinition', 'Memory']
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskExecutionRole
+      ContainerDefinitions:
+        - Name: !FindInMap ['ECSConfig', 'ContainerDefinition', 'ContainerName']
+          Cpu: !FindInMap ['ECSConfig', 'ContainerDefinition', 'ContainerCpu']
+          Memory: !FindInMap ['ECSConfig', 'ContainerDefinition', 'ContainerMemory']
+          Image: !Ref ContainerImage
+          PortMappings:
+            - ContainerPort: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+            - ContainerPort: 22
+          Environment:
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+            - Name: COMPANY
+              Value: !Ref Company
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region  
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref CloudWatchLogsGroup
+              awslogs-stream-prefix: ecs
+        - Name: !FindInMap ['ECSConfig', 'cSidecarDefinition', 'cSidecarName']
+          Cpu: !FindInMap ['ECSConfig', 'cSidecarDefinition', 'cSidecarCpu']
+          Memory: !FindInMap ['ECSConfig', 'cSidecarDefinition', 'cSidecarMemory']
+          Image: !Ref cSidecarImage
+          Essential: False
+          DependsOn:
+            - Condition: START
+              ContainerName: !FindInMap ['ECSConfig', 'ContainerDefinition', 'ContainerName']
+          PortMappings:
+            - ContainerPort: !FindInMap ['ECSConfig', 'cSidecarDefinition', 'PortMappings']
+          Environment:
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+            - Name: COMPANY
+              Value: !Ref Company
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region   
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref CloudWatchLogsGroup
+              awslogs-stream-prefix: ecs
+  # Service
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: TargetGroupBlue
+    Properties:
+      ServiceName: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'ecs','service']]
+      LaunchType: FARGATE
+      Cluster: !Ref ECSCluster
+      HealthCheckGracePeriodSeconds: !FindInMap ['ECSConfig', 'ServiceDefinition', 'HealthCheckGracePeriodSeconds']
+      DesiredCount: !FindInMap ['ECSConfig', 'ServiceDefinition', 'NumberOfTasks']
+      TaskDefinition: !Ref TaskDefinition
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+      DeploymentController:
+        Type: CODE_DEPLOY
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets:
+            - !Ref PrivateSubnetA
+            - !Ref PrivateSubnetB
+          SecurityGroups: [!Ref ServiceSecurityGroup]
+      LoadBalancers:
+        - ContainerName: !FindInMap ['ECSConfig', 'ContainerDefinition', 'ContainerName']
+          ContainerPort: !FindInMap ['ECSConfig', 'ContainerDefinition', 'PortMappings']
+          TargetGroupArn: !Ref TargetGroupBlue
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !FindInMap ['Main', 'Service', 'Value']
+  ##############################################################################
+  #### CLOUDWATCH
+  ## Log Group
+  CloudWatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['', ['/ecs/', !Ref Environment,'-',!Ref Company,'-',!FindInMap ['Main', 'Service', 'Value'],'-task','-log']]
+      RetentionInDays: 5
+
+Outputs:
+  PublicSubnetA:
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','public','a' ]]
+  PublicSubnetB:
+    Value: !Ref PublicSubnetB
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'subnet','public','b' ]]
+  ServiceSecurityGroup:
+    Value: !Ref ServiceSecurityGroup
+    Export:
+      Name: !Join ['-', [!Ref Environment,!Ref Company,!FindInMap ['Main', 'Service', 'Value'],'ecs','service','sg']]
+
